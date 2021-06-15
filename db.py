@@ -68,66 +68,60 @@ def loopItems(cursor, rows):
     result.append(dict(zip(headers, row)))
   return result
 
-# dynamic function working for get requests!
 
-
-def run_select(qstr, params=[]):
+def run_query(qstr, params=[]):
+  result = None
+  data = None
   conn = openConnection()
   cursor = openCursor(conn)
-  result = None
   try:
     cursor.execute(qstr, params)
-    item = cursor.fetchall()
-
-    result = loopItems(cursor, item)
 
   except:
     traceback.print_exc()
-    print('Error getting items!')
-
-  closeAll(conn, cursor)
-  return result
-
-
-def run_insert_update(qstr, params=[]):
-  result = None
-  conn = openConnection()
-  cursor = openCursor(conn)
+    print('Error')
   try:
-    cursor.execute(qstr, params)
+    data = cursor.fetchall()
+#! Had an issue where SELECT was running, then hitting the elif for PATCH and since it had a rowcount of 1, it wwas updating the variable in app.py to 1
+#! Added this conditional and return to full-stop on a SELECT query and return the result. Unsure if good, but works as a solution for now!
+    result = loopItems(cursor, data)
 
-    # can't think of another way, I understand there's a slim chance that rowcount could be 1 in certain cases here, especially on conditional queries.
-    # if(cursor.rowcount > 1):
-    #   result = loopItems(cursor, cursor.fetchall())
-    if(cursor.lastrowid != 0):
+  except:
+    print(data)
+    print('Not a SELECT')
+
+  if(cursor.lastrowid != -1 and cursor.lastrowid != None and data == None):
+    try:
       conn.commit()
       result = cursor.lastrowid
-    elif(cursor.rowcount == 1):
+    except:
+      print('Not a POST')
+
+  elif(cursor.rowcount == 1 and data == None):
+    try:
       conn.commit()
       result = cursor.rowcount
-
-  except:
-    traceback.print_exc()
-    print('Error patching item!')
+    except:
+      print('Not a PATCH or DELETE')
 
   closeAll(conn, cursor)
 
   return result
 
 
-def run_delete(qstr, params=[]):
-  result = None
-  conn = openConnection()
-  cursor = openCursor(conn)
-  try:
-    cursor.execute(qstr, params)
-    conn.commit()
-    result = cursor.rowcount
+# def run_delete(qstr, params=[]):
+#   result = None
+#   conn = openConnection()
+#   cursor = openCursor(conn)
+#   try:
+#     cursor.execute(qstr, params)
+#     conn.commit()
+#     result = cursor.rowcount
 
-  except:
-    traceback.print_exc()
-    print('Error patching item!')
+#   except:
+#     traceback.print_exc()
+#     print('Error patching item!')
 
-  closeAll(conn, cursor)
+#   closeAll(conn, cursor)
 
-  return result
+#   return result

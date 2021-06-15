@@ -13,7 +13,7 @@ CORS(app)
 
 @app.get('/posts')
 def get_posts():
-  posts = db.run_select(
+  posts = db.run_query(
       "SELECT title, content, id, user_id FROM blog_post")
   if(posts == None):
     return Response('Error getting items from DB', mimetype='text/plain', status=500)
@@ -46,7 +46,7 @@ def add_post():
   # if insert works it will be a positive number or 0, it cant be negative (int unsigned)
   new_id = -1
   try:
-    new_id = db.run_insert_update(q_str, v_params)
+    new_id = db.run_query(q_str, v_params)
 
   except mariadb.InternalError:
     traceback.print_exc()
@@ -107,10 +107,18 @@ def edit_post():
   q_str += " WHERE id = ?"
 
   try:
-    update = db.run_insert_update(q_str, v_params)
+    update = db.run_query(q_str, v_params)
+    #! if here so that we don't run this if update != 0
+    if(update != 0):
+      #! is data comparison for only updating if changed better done using state on the front end, or using SQL comparision? I assume this depends
+      #! if you already have the data on your front end? ie. Posts could be stored in the store since we get them on page load and referenced using
+      #! js coniditionals, to stop the query from even being triggered, rather than comparing the data in SQL.
 
-    updated_info = db.run_select(
-        "SELECT id, title, content, user_id FROM blog_post WHERE id = ?", [post_id, ])
+      updated_info = db.run_query(
+          "SELECT id, title, content, user_id FROM blog_post WHERE id = ?", [post_id, ])
+    else:
+      traceback.print_exc()
+      return Response("Failed to update", mimetype="text/plain", status=400)
 
   except mariadb.InternalError:
     # Basic 500 seems like an okay error here.
@@ -127,8 +135,9 @@ def edit_post():
     print("Error with PATCH!")
 
   # 1 row should still work here! Added that the result also needed data, unsure if I still need new_animal condition, but more explicit cant be that bad, rightttt?
-  if(update != 0 and updated_info != None):
+  if(updated_info != None):
     updated_post_json = json.dumps(updated_info, default=str)
+    print(updated_post_json)
     return Response(updated_post_json, mimetype="application/json", status=201)
   else:
     traceback.print_exc()
@@ -151,7 +160,7 @@ def delete_post():
   deleted_item = 0
   try:
 
-    deleted_item = db.run_delete(
+    deleted_item = db.run_query(
         "DELETE FROM blog_post WHERE id = ? AND user_id = ?", [post_id, user_id])
 
   except mariadb.InternalError:
