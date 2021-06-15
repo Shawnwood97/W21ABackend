@@ -1,9 +1,9 @@
-import db
-from flask import Flask, request, Response
-import json
-import traceback
-from flask_cors import CORS
 import mariadb
+from flask_cors import CORS
+import traceback
+import json
+from flask import Flask, request, Response
+import db
 # import bjeorn
 
 
@@ -13,14 +13,13 @@ CORS(app)
 
 @app.get('/posts')
 def get_posts():
-  request = db.api_request(
+  posts = db.run_select(
       "SELECT title, content, id, user_id FROM blog_post")
-  if(request == None):
+  if(posts == None):
     return Response('Error getting items from DB', mimetype='text/plain', status=500)
-
   else:
-    items_json = json.dumps(request, default=str)
-    return Response(items_json, mimetype='application/json', status=200)
+    posts_json = json.dumps(posts, default=str)
+    return Response(posts_json, mimetype='application/json', status=200)
 
 
 @app.post('/posts')
@@ -37,16 +36,17 @@ def add_post():
     traceback.print_exc()
     return Response("Error: Unknown error with an input!", mimetype="text/plain", status=400)
 
-  conn = db.openConnection()
-  cursor = db.openCursor(conn)
+  # INSERT Query
+  q_str = "INSERT INTO blog_post (title, content, user_id) VALUES (?,?,?)"
+  # Starting point for valid params to pass to function
+  v_params = []
+
+  v_params.extend((post_title, post_content, user_id))
 
   # if insert works it will be a positive number or 0, it cant be negative (int unsigned)
   new_id = -1
   try:
-    cursor.execute(
-        "INSERT INTO blog_post (title, content, user_id) VALUES (?, ?, ?)", [post_title, post_content, user_id])
-    conn.commit()
-    new_id = cursor.lastrowid
+    new_id = db.run_insert_update(q_str, v_params)
 
   except mariadb.InternalError:
     traceback.print_exc()
@@ -58,8 +58,6 @@ def add_post():
   except:
     traceback.print_exc()
     print("Error with POST!")
-
-  db.closeAll(conn, cursor)
 
   # if newly added id == a negative number, fail
   if(new_id != -1):
@@ -73,6 +71,107 @@ def add_post():
     return Response(new_post_json, mimetype="application/json", status=201)
   else:
     return Response("Failed to create post", mimetype="text/plain", status=400)
+
+
+@app.patch('/posts')
+def edit_post():
+  try:
+    post_title = str(request.json.get('postTitle'))
+    post_content = str(request.json.get('postContent'))
+    post_id = int(request.json['postId'])
+
+  except ValueError:
+    traceback.print_exc()
+    return Response("Error: Something wrong with a user input", mimetype="text/plain", status=422)
+  except:
+    traceback.print_exc()
+    return Response("Error: Unknown error with input!", mimetype="text/plain", status=400)
+
+  # start of an UPDATE Query
+  q_str = "UPDATE blog_post SET"
+  # Starting point for valid params to pass to function
+  v_params = []
+
+  if(post_title != None):
+    q_str += " title = ?,"
+    v_params.append(post_title)
+  if(post_content != None):
+    q_str += " content = ?,"
+    v_params.append(post_content)
+  else:
+    return
+
+  v_params.append(post_id)
+
+  q_str = q_str[:-1]
+  q_str += " WHERE id = ?"
+
+  try:
+    update = db.run_insert_update(q_str, v_params)
+
+    updated_info = db.run_select(
+        "SELECT id, title, content, user_id FROM blog_post WHERE id = ?", [post_id, ])
+
+  except mariadb.InternalError:
+    # Basic 500 seems like an okay error here.
+    traceback.print_exc()
+    return Response("Internal Server Error: Failed to update post title", mimetype="text/plain", status=500)
+  except mariadb.IntegrityError as e:
+    # I think 409 fits well here, since it should be caused by a conflict like a duplicate, or foreign key issue, seems like a client issue, not a server issue?
+    traceback.print_exc()
+    print(e.msg)
+    return Response("Error: Possible duplicate data or foreign key conflict!", mimetype="text/plain", status=409)
+
+  except:
+    traceback.print_exc()
+    print("Error with PATCH!")
+
+  # 1 row should still work here! Added that the result also needed data, unsure if I still need new_animal condition, but more explicit cant be that bad, rightttt?
+  if(update != 0 and updated_info != None):
+    updated_post_json = json.dumps(updated_info, default=str)
+    return Response(updated_post_json, mimetype="application/json", status=201)
+  else:
+    traceback.print_exc()
+    return Response("Failed to update", mimetype="text/plain", status=400)
+
+
+@app.delete('/posts')
+def delete_post():
+  try:
+    post_id = int(request.json['postId'])
+    user_id = int(request.json['userId'])
+
+  except ValueError:
+    traceback.print_exc()
+    return Response("Error: ID Input was not a whole number", mimetype="text/plain", status=403)
+  except:
+    traceback.print_exc()
+    return Response("Error: Unknown error with input!", mimetype="text/plain", status=400)
+
+  deleted_item = 0
+  try:
+
+    deleted_item = db.run_delete(
+        "DELETE FROM blog_post WHERE id = ? AND user_id = ?", [post_id, user_id])
+
+  except mariadb.InternalError:
+    # Basic 500 seems like an okay error here,
+    traceback.print_exc()
+    return Response("Internal Server Error: Failed to delete animal", mimetype="text/plain", status=500)
+  except mariadb.IntegrityError:
+
+    traceback.print_exc()
+    return Response("Error: Possible duplicate data or foreign key conflict!", mimetype="text/plain", status=409)
+
+  except:
+    traceback.print_exc()
+    print("Error with DELETE!")
+
+  if(deleted_item == 1):
+    # having this as 204 prevented it from actually displaying "Post Deleted!" #! Assume this is because 204 = No Content?!
+    return Response(f"{deleted_item} Post Deleted!", mimetype="text/plain", status=200)
+  else:
+    return Response("Failed to delete animal", mimetype="text/plain", status=400)
 
 
 app.run(debug=True)
