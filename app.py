@@ -31,7 +31,7 @@ def add_post():
 
   except ValueError:
     traceback.print_exc()
-    return Response("Error: One of the values is bad!", mimetype="text/plain", status=422)
+    return Response("Error: One or more of the values is bad!", mimetype="text/plain", status=422)
   except:
     traceback.print_exc()
     return Response("Error: Unknown error with an input!", mimetype="text/plain", status=400)
@@ -92,14 +92,14 @@ def edit_post():
   # Starting point for valid params to pass to function
   v_params = []
 
-  if(post_title != None):
+# this stops empty values from passing to the DB, but still shows success, gotta think of the proper way to do this as when more data gets added, it
+# will get much harder to maintain if I just do a generic IF statement after both to see if all are empty or None.
+  if(post_title != str(None) and post_title != ''):
     q_str += " title = ?,"
     v_params.append(post_title)
-  if(post_content != None):
+  if(post_content != str(None) and post_content != ''):
     q_str += " content = ?,"
     v_params.append(post_content)
-  else:
-    return
 
   v_params.append(post_id)
 
